@@ -79,7 +79,7 @@ int RegisterToZookeeper(struct ZookeeperHelper *zk_helper, \
     zk_helper->recv_timeout = recv_timeout;
     zk_helper->mode = E_CONNECTION_M;
     
-    zk_helper->zhandle = zookeeper_init(zk_helper->host, NULL, recv_timeout, \
+    zk_helper->zhandle = zookeeper_init(zk_helper->host, watcher, recv_timeout, \
             NULL, zk_helper, 0);
     if(zk_helper->zhandle == NULL){
         log_error("zookeeper_init error: %s", strerror(errno));
@@ -229,6 +229,7 @@ static int CreateNode(struct ZookeeperHelper *zk_helper, \
         strcpy(p->key, path);
         p->value = malloc(strlen(value) + 1);
         strcpy(p->value, value);
+        //printf("1%s,%s\n",p->key, p->value);
 
         SLIST_INSERT_HEAD(&zk_helper->path_value, p, next);
     }
@@ -266,6 +267,7 @@ static void watcher(zhandle_t *zh, int type, int state, const char *path, void *
                 struct ZkString *p;
                 SLIST_FOREACH(p, &zk_helper->path_value, next)
                 {
+                    //printf("2%s,%s\n",p->key, p->value);
                     CreateNode(zk_helper, p->key, p->value, ZOO_EPHEMERAL); 
                 }
                 zk_helper->reconnection_flag = 0;
