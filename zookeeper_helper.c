@@ -335,7 +335,7 @@ static void ReSetEvent(struct ZookeeperHelper *zk_helper)
                 }
             }
         }
-        zk_event->ConnectedEvent(zk_helper->zhandle, path);
+        zk_event->ConnectedEvent(zk_event, zk_helper->zhandle, path);
     }
 }
 
@@ -365,7 +365,7 @@ static void HandleEvent(struct ZkEvent *zk_event, zhandle_t* zh, const char* pat
         if (ZOK != ret){
             log_error("set watcher [ZOO_CREATED_EVENT] for path %s error %s", path, zerror(ret));
         }
-        zk_event->CreatedEvent(zh, path);
+        zk_event->CreatedEvent(zk_event, zh, path);
     }
     else if(eventmask & CHANGED_EVENT)
     {
@@ -373,7 +373,7 @@ static void HandleEvent(struct ZkEvent *zk_event, zhandle_t* zh, const char* pat
         if(ZOK != ret){
             log_error("set watcher [ZOO_CHANGED_EVENT] for path %s error %s", path, zerror(ret));
         }
-        zk_event->ChangedEvent(zh, path);
+        zk_event->ChangedEvent(zk_event, zh, path);
     }
     else if(eventmask & CHILD_EVENT)
     {
@@ -381,7 +381,7 @@ static void HandleEvent(struct ZkEvent *zk_event, zhandle_t* zh, const char* pat
         if(ZOK != ret){
             log_error("set watcher [ZOO_CHILD_EVENT] for path %s error %s", path, zerror(ret));
         }
-        zk_event->ChildEvent(zh, path);
+        zk_event->ChildEvent(zk_event, zh, path);
     }
     else if(eventmask & DELETED_EVENT)
     {
@@ -389,7 +389,7 @@ static void HandleEvent(struct ZkEvent *zk_event, zhandle_t* zh, const char* pat
         if( ZOK != ret ){
             log_error("set watcher [ZOO_DELETED_EVENT] for path %s error %s", path, zerror(ret));
         }
-        zk_event->DeletedEvent(zh, path);
+        zk_event->DeletedEvent(zk_event, zh, path);
     }
 
 }

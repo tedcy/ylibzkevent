@@ -6,7 +6,9 @@
 
 #define ZOOKEEPER_HELPER_HOST_MAX_LEN 1024
 
-typedef void (*ZkEventFunc)(zhandle_t *zh,const char *path);
+struct ZkEvent;
+
+typedef void (*ZkEventFunc)(struct ZkEvent *zk_event, zhandle_t *zh, const char *path);
 
 struct ZkEvent
 {

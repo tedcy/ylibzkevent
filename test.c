@@ -4,7 +4,7 @@
 #include "zookeeper_helper.h"
 #include "logger.h"
 
-void ChildEvent(zhandle_t *zh,const char *path)
+void ChildEvent(struct ZkEvent *zk_event, zhandle_t *zh, const char *path)
 {
     log_info("catch childevent");
     struct String_vector node_vector;
@@ -17,10 +17,10 @@ void ChildEvent(zhandle_t *zh,const char *path)
     deallocate_String_vector(&node_vector);
 }
 
-void ConnectedEvent(zhandle_t *zh,const char *path)
+void ConnectedEvent(struct ZkEvent *zk_event, zhandle_t *zh, const char *path)
 {
     log_info("catch connectedevent");
-    ChildEvent(zh, path);
+    zk_event->ChildEvent(zk_event, zh, path);
 }
 
 int main()
