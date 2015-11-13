@@ -24,14 +24,15 @@ extern const int DELETED_EVENT;
 extern const int CHANGED_EVENT;
 extern const int CHILD_EVENT;
 
-struct ZkString;
+struct ZkHelperPair;
 
-struct ZkString
+struct ZkHelperPair
 {
     char *key;
-    char *value;
+    void *value;
+    int flag;
     int value_len;
-    SLIST_ENTRY(ZkString) next;
+    SLIST_ENTRY(ZkHelperPair) next;
 };
 
 enum E_MODE
@@ -39,6 +40,8 @@ enum E_MODE
     E_CONNECTION_M,
     E_REGISTER_M
 };
+    
+SLIST_HEAD(ZkHelperPairList,ZkHelperPair);
 
 struct ZookeeperHelper
 {
@@ -48,7 +51,8 @@ struct ZookeeperHelper
     int zk_errno;
     char local_addr[32];
     short local_port;
-    SLIST_HEAD(ZkHelperList,ZkString) path_value;
+    struct ZkHelperPairList zoo_path_list;
+    struct ZkHelperPairList zoo_event_list;
     int mode;
     int reconnection_flag;
 };
@@ -60,5 +64,9 @@ int RegisterToZookeeper(struct ZookeeperHelper *zk_helper, \
         const char* host, int recv_timeout);
 int AddTmpNode(struct ZookeeperHelper *zk_helper, const char *path, const char *value);
 int AddPersistentNode(struct ZookeeperHelper *zk_helper, const char *path, const char *value);
+int AddZookeeperEvent(struct ZookeeperHelper *zk_helper, \
+        int event, const char *path, struct ZkEvent *handle);
+int GetChildren(zhandle_t *zh, \
+        const char* path, struct String_vector *node_vector);
 
 #endif

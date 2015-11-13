@@ -16,7 +16,9 @@ static void watcher(zhandle_t *zh, int type, int state, \
         const char *path, void *watcherCtx);
 static void zoo_sleep(unsigned int nmsecs);
 static int get_local_addr();
+static void ReSetEvent(struct ZookeeperHelper *zk_helper);
 static void ReConnect(struct ZookeeperHelper *zk_helper);
+static void HandleEvent(struct ZkEvent *zk_event, zhandle_t* zh, const char* path);
 
 const int CREATED_EVENT = 1 << 1;
 const int DELETED_EVENT = 1 << 2;
@@ -203,10 +205,13 @@ static int CreateNode(struct ZookeeperHelper *zk_helper, \
         log_error("create node %s flag %d error: %s", path, flag, zerror(res));
         return -1;
     }
+    if(flag == 0){
+        return 0;
+    }
     
-    struct ZkString *p;
+    struct ZkHelperPair *p;
     int find = 0;
-    SLIST_FOREACH(p, &zk_helper->path_value, next)
+    SLIST_FOREACH(p, &zk_helper->zoo_path_list, next)
     {
         //should be strncmp in the future
         if(strcmp(path, p->key) == 0) {
@@ -215,26 +220,123 @@ static int CreateNode(struct ZookeeperHelper *zk_helper, \
         }
     }
     if(find == 1){
-        //update_value(p, value);
+        //update_value(p, value, valuelen);
         if(p->value_len < strlen(value) + 1){
             p->value_len = strlen(value) + 1;
             p->value = realloc(p->value, p->value_len);
         }
         strcpy(p->value, value);
+        p->flag = flag;
     }
     else {
-        //create_value(&p, value);
-        p = malloc(sizeof(struct ZkString));
+        //create_value(&p, value, valuelen);
+        p = malloc(sizeof(struct ZkHelperPair));
         p->key = malloc(strlen(path) + 1);
         strcpy(p->key, path);
         p->value = malloc(strlen(value) + 1);
         strcpy(p->value, value);
+        p->value_len = strlen(value) + 1;
         //printf("1%s,%s\n",p->key, p->value);
 
-        SLIST_INSERT_HEAD(&zk_helper->path_value, p, next);
+        p->flag = flag;
+        SLIST_INSERT_HEAD(&zk_helper->zoo_path_list, p, next);
     }
 
     return 0;
+}
+
+int AddZookeeperEvent(struct ZookeeperHelper *zk_helper, \
+        int event, const char *path, struct ZkEvent *handle)
+{
+    int ret = 0;
+    handle->eventmask |= event;
+
+    struct ZkHelperPair *p;
+    int find = 0;
+    SLIST_FOREACH(p, &zk_helper->zoo_path_list, next)
+    {
+        //should be strncmp in the future
+        if(strcmp(path, p->key) == 0) {
+            find = 1;
+            ((struct ZkEvent *)p->value)->eventmask = handle->eventmask;
+            break;
+        }
+    }
+    if(find == 0){
+        p = malloc(sizeof(struct ZkHelperPair));
+        p->key = malloc(strlen(path) + 1);
+        strcpy(p->key, path);
+        p->value = malloc(sizeof(struct ZkEvent));
+        memcpy(p->value, handle, sizeof(struct ZkEvent));
+        SLIST_INSERT_HEAD(&zk_helper->zoo_event_list, p, next);
+    }
+    if((event & CREATED_EVENT) || (event & DELETED_EVENT) || (event & CHANGED_EVENT)){
+        ret = zoo_exists(zk_helper->zhandle, path, 1, NULL);
+        if(ret != ZOK){
+            if (ret == ZNONODE) {
+                ret = AddTmpNode(zk_helper, path, "1");
+            }
+            if (ret != ZOK) {
+                log_error("set watcher for path %s error %s", path, zerror(ret));
+                return -1;
+            }
+        }
+    }
+    if(event & CHILD_EVENT){
+        ret = zoo_get_children(zk_helper->zhandle, path, 1, NULL);
+        if(ret != ZOK){
+            if (ret == ZNONODE) {
+                ret = AddTmpNode(zk_helper, path, "1");
+            }
+
+            if (ret != ZOK) {
+                log_error("set watcher for path %s error %s", path, zerror(ret));
+                return -1;
+            }
+        }
+    }
+    
+    return 0;
+}
+
+static void ReSetEvent(struct ZookeeperHelper *zk_helper)
+{
+    int ret = 0;
+    struct ZkHelperPair *p;
+    int event;
+    char *path;
+    struct ZkEvent * zk_event;
+    SLIST_FOREACH(p, &zk_helper->zoo_event_list, next)
+    {
+        zk_event = ((struct ZkEvent *)p->value);
+        event = zk_event->eventmask;
+        path = p->key;
+        if((event & CREATED_EVENT) || (event & DELETED_EVENT) || (event & CHANGED_EVENT)){
+            ret = zoo_exists(zk_helper->zhandle, path, 1, NULL);
+            if(ret != ZOK){
+                if (ret == ZNONODE) {
+                    ret = AddTmpNode(zk_helper, path, "1");
+                }
+                if (ret != ZOK) {
+                    log_error("set watcher for path %s error %s", path, zerror(ret));
+                    continue;
+                }
+            }
+        }
+        if(event & CHILD_EVENT){
+            ret = zoo_get_children(zk_helper->zhandle, path, 1, NULL);
+            if(ret != ZOK){
+                if (ret == ZNONODE) {
+                    ret = AddTmpNode(zk_helper, path, "1");
+                }
+                if (ret != ZOK) {
+                    log_error("set watcher for path %s error %s", path, zerror(ret));
+                    continue;
+                }
+            }
+        }
+        zk_event->ConnectedEvent(zk_helper->zhandle, path);
+    }
 }
 
 static void ReConnect(struct ZookeeperHelper *zk_helper)
@@ -251,6 +353,47 @@ static void ReConnect(struct ZookeeperHelper *zk_helper)
     zk_helper->reconnection_flag = 1; 
 }
 
+static void HandleEvent(struct ZkEvent *zk_event, zhandle_t* zh, const char* path)
+{
+    int ret;
+    int eventmask = zk_event->eventmask;
+    log_debug("path %s eventmask: %d", path, eventmask);
+    if(eventmask & CREATED_EVENT)
+    {
+        //重新设置观察点
+        ret = zoo_exists(zh, path, 1, NULL);
+        if (ZOK != ret){
+            log_error("set watcher [ZOO_CREATED_EVENT] for path %s error %s", path, zerror(ret));
+        }
+        zk_event->CreatedEvent(zh, path);
+    }
+    else if(eventmask & CHANGED_EVENT)
+    {
+        ret = zoo_exists(zh, path, 1, NULL);
+        if(ZOK != ret){
+            log_error("set watcher [ZOO_CHANGED_EVENT] for path %s error %s", path, zerror(ret));
+        }
+        zk_event->ChangedEvent(zh, path);
+    }
+    else if(eventmask & CHILD_EVENT)
+    {
+        ret = zoo_get_children(zh, path, 1, NULL);
+        if(ZOK != ret){
+            log_error("set watcher [ZOO_CHILD_EVENT] for path %s error %s", path, zerror(ret));
+        }
+        zk_event->ChildEvent(zh, path);
+    }
+    else if(eventmask & DELETED_EVENT)
+    {
+        ret = zoo_exists(zh, path, 1, NULL);
+        if( ZOK != ret ){
+            log_error("set watcher [ZOO_DELETED_EVENT] for path %s error %s", path, zerror(ret));
+        }
+        zk_event->DeletedEvent(zh, path);
+    }
+
+}
+
 static void watcher(zhandle_t *zh, int type, int state, const char *path, void *watcherCtx)
 {
     struct ZookeeperHelper *zk_helper = (struct ZookeeperHelper *)watcherCtx;
@@ -264,15 +407,15 @@ static void watcher(zhandle_t *zh, int type, int state, const char *path, void *
             if(zk_helper->mode == E_REGISTER_M && zk_helper->reconnection_flag)
             {
                 //只有在SESSION EXPIRED事件导致的应用重连才创建临时节点
-                struct ZkString *p;
-                SLIST_FOREACH(p, &zk_helper->path_value, next)
+                struct ZkHelperPair *p;
+                SLIST_FOREACH(p, &zk_helper->zoo_path_list, next)
                 {
                     //printf("2%s,%s\n",p->key, p->value);
-                    CreateNode(zk_helper, p->key, p->value, ZOO_EPHEMERAL); 
+                    CreateNode(zk_helper, p->key, p->value, p->flag); 
                 }
                 zk_helper->reconnection_flag = 0;
             }
-            //ReSetEvent();     //重新设置观察点
+            ReSetEvent(zk_helper);     //重新设置观察点
         }
         else if(state == ZOO_AUTH_FAILED_STATE)
         {
@@ -289,6 +432,17 @@ static void watcher(zhandle_t *zh, int type, int state, const char *path, void *
     }
     else 
     {
+        struct ZkHelperPair *p;
+        SLIST_FOREACH(p, &zk_helper->zoo_event_list, next)
+        {
+            //should be strncmp in the future
+            log_debug("get key %s",p->key);
+            if(strcmp(path, p->key) == 0) {
+                log_debug("catch key %s",p->key);
+                HandleEvent(p->value, zk_helper->zhandle, path);
+                break;
+            }
+        }
     }
 }
 
@@ -327,5 +481,18 @@ static int get_local_addr(struct ZookeeperHelper *zk_helper)
     }
     strncpy(zk_helper->local_addr,ip_addr,32);
     zk_helper->local_port = ntohs(addr_.sin_port);
+    return 0;
+}
+
+int GetChildren(zhandle_t *zh, \
+        const char* path, struct String_vector *node_vector)
+{
+    node_vector->count = 0;
+    int res = zoo_get_children(zh, path, 0, node_vector);
+    if(res != ZOK)
+    {
+        log_error("Get %s error: %s(%d)", path, zerror(res), res);
+        return -1;
+    }
     return 0;
 }
