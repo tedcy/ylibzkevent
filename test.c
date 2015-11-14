@@ -1,8 +1,11 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <memory.h>
+#include <signal.h>
 #include "zookeeper_helper.h"
 #include "logger.h"
+
+struct ZookeeperHelper *zk_helper;
 
 void child_event(struct ZkEvent *zk_event, zhandle_t *zh, const char *path)
 {
@@ -23,10 +26,16 @@ void connected_event(struct ZkEvent *zk_event, zhandle_t *zh, const char *path)
     zk_event->child_event(zk_event, zh, path);
 }
 
+void exiter(int sig)
+{
+    destory_zookeeper_helper(zk_helper);
+    exit(0);
+}
+
 int main()
 {
+    signal(SIGINT, exiter);
     log_init(&logger, NULL, LOG_LEVEL_DEBUG);
-    struct ZookeeperHelper *zk_helper;
     struct ZkEvent zk_event;
     memset(&zk_event, 0, sizeof(struct ZkEvent));
     zk_event.child_event = child_event;
@@ -37,6 +46,5 @@ int main()
     add_tmp_node(zk_helper, "/fuck/yuanyuanming/abc", "fuckfuckfuck");
     add_zookeeper_event(zk_helper, CHILD_EVENT ,"/fuck/yuanyuanming", &zk_event);
     sleep(10000);
-    destory_zookeeper_helper(zk_helper);
     return 0;
 }

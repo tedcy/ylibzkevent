@@ -60,6 +60,27 @@ static const char* type2Str(int type)
     return "INVALID_EVENT";
 }
 
+inline static void mem_copy_value(void **dst, int *dst_len, \
+        const void *src, const int src_len)
+{
+    if(src_len > *dst_len){
+        *dst_len = src_len;
+        *dst = realloc(*dst, src_len);
+    }
+    memcpy(*dst, src, src_len);
+    return ;
+}
+
+inline static void mem_new_value(void **dst, int *dst_len, \
+        const void *src, const int src_len)
+{
+    if(dst_len != NULL)
+        *dst_len = src_len;
+    *dst = malloc(src_len);
+    memcpy(*dst, src, src_len);
+    return ;
+}
+
 struct ZookeeperHelper * create_zookeeper_helper()
 {
     struct ZookeeperHelper *zk_helper = malloc(sizeof(struct ZookeeperHelper));
@@ -70,6 +91,21 @@ struct ZookeeperHelper * create_zookeeper_helper()
 int destory_zookeeper_helper(struct ZookeeperHelper *zk_helper)
 {
     zk_helper->mode = E_CONNECTION_M;
+    struct ZkHelperPair *p;
+    SLIST_FOREACH(p, &zk_helper->zoo_event_list, next)
+    {
+        free(p->key);
+        free(p->value);    
+        free(p);
+    }
+    SLIST_FOREACH(p, &zk_helper->zoo_path_list, next)
+    {
+        free(p->key);
+        free(p->value);    
+        free(p);
+    }
+
+    zookeeper_close(zk_helper->zhandle);
     free(zk_helper);
     return 0;
 }
@@ -221,21 +257,14 @@ static int create_node(struct ZookeeperHelper *zk_helper, \
     }
     if(find == 1){
         //update_value(p, value, valuelen);
-        if(p->value_len < strlen(value) + 1){
-            p->value_len = strlen(value) + 1;
-            p->value = realloc(p->value, p->value_len);
-        }
-        strcpy(p->value, value);
+        mem_copy_value(&p->value, &p->value_len, value, strlen(value) + 1);
         p->flag = flag;
     }
     else {
         //create_value(&p, value, valuelen);
         p = malloc(sizeof(struct ZkHelperPair));
-        p->key = malloc(strlen(path) + 1);
-        strcpy(p->key, path);
-        p->value = malloc(strlen(value) + 1);
-        strcpy(p->value, value);
-        p->value_len = strlen(value) + 1;
+        mem_new_value((void **)&p->key, NULL, path, strlen(path) + 1);
+        mem_new_value(&p->value, &p->value_len, value, strlen(value) + 1);
         //printf("1%s,%s\n",p->key, p->value);
 
         p->flag = flag;
@@ -264,10 +293,9 @@ int add_zookeeper_event(struct ZookeeperHelper *zk_helper, \
     }
     if(find == 0){
         p = malloc(sizeof(struct ZkHelperPair));
-        p->key = malloc(strlen(path) + 1);
-        strcpy(p->key, path);
-        p->value = malloc(sizeof(struct ZkEvent));
-        memcpy(p->value, handle, sizeof(struct ZkEvent));
+
+        mem_new_value((void **)&p->key, NULL, path, strlen(path) + 1);
+        mem_new_value(&p->value, NULL, handle, sizeof(struct ZkEvent));
         SLIST_INSERT_HEAD(&zk_helper->zoo_event_list, p, next);
     }
     if((event & CREATED_EVENT) || (event & DELETED_EVENT) || (event & CHANGED_EVENT)){
