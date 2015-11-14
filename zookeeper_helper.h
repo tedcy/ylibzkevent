@@ -13,12 +13,12 @@ typedef void (*ZkEventFunc)(struct ZkEvent *zk_event, zhandle_t *zh, const char 
 struct ZkEvent
 {
     int eventmask;
-    ZkEventFunc ConnectedEvent;
-    ZkEventFunc ChangedEvent;
-    ZkEventFunc ChildEvent;
-    ZkEventFunc CreatedEvent;
-    ZkEventFunc DeletedEvent;
-    ZkEventFunc NotWatchingEvent;
+    ZkEventFunc connected_event;
+    ZkEventFunc changed_event;
+    ZkEventFunc child_event;
+    ZkEventFunc created_event;
+    ZkEventFunc deleted_event;
+    ZkEventFunc not_watching_event;
 };
 
 extern const int CREATED_EVENT;
@@ -59,16 +59,16 @@ struct ZookeeperHelper
     int reconnection_flag;
 };
 
-struct ZookeeperHelper * CreateZookeeperHelper();
-int DestoryZookeeperHelper(struct ZookeeperHelper *zk_helper);
+struct ZookeeperHelper * create_zookeeper_helper();
+int destory_zookeeper_helper(struct ZookeeperHelper *zk_helper);
 
-int RegisterToZookeeper(struct ZookeeperHelper *zk_helper, \
+int register_to_zookeeper(struct ZookeeperHelper *zk_helper, \
         const char* host, int recv_timeout);
-int AddTmpNode(struct ZookeeperHelper *zk_helper, const char *path, const char *value);
-int AddPersistentNode(struct ZookeeperHelper *zk_helper, const char *path, const char *value);
-int AddZookeeperEvent(struct ZookeeperHelper *zk_helper, \
+int add_tmp_node(struct ZookeeperHelper *zk_helper, const char *path, const char *value);
+int add_persistent_node(struct ZookeeperHelper *zk_helper, const char *path, const char *value);
+int add_zookeeper_event(struct ZookeeperHelper *zk_helper, \
         int event, const char *path, struct ZkEvent *handle);
-int GetChildren(zhandle_t *zh, \
+int get_children(zhandle_t *zh, \
         const char* path, struct String_vector *node_vector);
 
 #endif
