@@ -29,6 +29,7 @@ void connected_event(struct ZkEvent *zk_event, zhandle_t *zh, const char *path)
 void exiter(int sig)
 {
     destory_zookeeper_helper(zk_helper);
+    zk_helper = NULL;
     exit(0);
 }
 
