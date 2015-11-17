@@ -18,7 +18,7 @@ static void zoo_sleep(unsigned int nmsecs);
 static int get_local_addr();
 static void re_set_event(struct ZookeeperHelper *zk_helper);
 static void re_connect(struct ZookeeperHelper *zk_helper);
-static void handle_event(struct ZkEvent *zk_event, zhandle_t* zh, const char* path);
+static void handle_event(struct ZkEvent *zk_event, zhandle_t* zh, int type, const char* path);
 
 const int CREATED_EVENT = 1 << 1;
 const int DELETED_EVENT = 1 << 2;
@@ -381,41 +381,57 @@ static void re_connect(struct ZookeeperHelper *zk_helper)
     zk_helper->reconnection_flag = 1; 
 }
 
-static void handle_event(struct ZkEvent *zk_event, zhandle_t* zh, const char* path)
+static void handle_event(struct ZkEvent *zk_event, zhandle_t* zh, int type, const char* path)
 {
     int ret;
     int eventmask = zk_event->eventmask;
     log_debug("path %s eventmask: %d", path, eventmask);
-    if(eventmask & CREATED_EVENT)
+    if(type == ZOO_CREATED_EVENT && eventmask & CREATED_EVENT)
     {
         //重新设置观察点
         ret = zoo_exists(zh, path, 1, NULL);
         if (ZOK != ret){
             log_error("set watcher [ZOO_CREATED_EVENT] for path %s error %s", path, zerror(ret));
         }
+        if(zk_event->created_event == NULL) {
+            log_error("path %s eventmask: %d, created_event func is null", path, eventmask);
+            return ;
+        }
         zk_event->created_event(zk_event, zh, path);
     }
-    else if(eventmask & CHANGED_EVENT)
+    else if(type == ZOO_CHANGED_EVENT && eventmask & CHANGED_EVENT)
     {
         ret = zoo_exists(zh, path, 1, NULL);
         if(ZOK != ret){
             log_error("set watcher [ZOO_CHANGED_EVENT] for path %s error %s", path, zerror(ret));
         }
+        if(zk_event->changed_event == NULL) {
+            log_error("path %s eventmask: %d, created_event func is null", path, eventmask);
+            return ;
+        }
         zk_event->changed_event(zk_event, zh, path);
     }
-    else if(eventmask & CHILD_EVENT)
+    else if(type == ZOO_CHILD_EVENT && eventmask & CHILD_EVENT)
     {
         ret = zoo_get_children(zh, path, 1, NULL);
         if(ZOK != ret){
             log_error("set watcher [ZOO_CHILD_EVENT] for path %s error %s", path, zerror(ret));
         }
+        if(zk_event->child_event == NULL) {
+            log_error("path %s eventmask: %d, created_event func is null", path, eventmask);
+            return ;
+        }
         zk_event->child_event(zk_event, zh, path);
     }
-    else if(eventmask & DELETED_EVENT)
+    else if(type == ZOO_DELETED_EVENT && eventmask & DELETED_EVENT)
     {
         ret = zoo_exists(zh, path, 1, NULL);
         if( ZOK != ret ){
             log_error("set watcher [ZOO_DELETED_EVENT] for path %s error %s", path, zerror(ret));
+        }
+        if(zk_event->deleted_event == NULL) {
+            log_error("path %s eventmask: %d, created_event func is null", path, eventmask);
+            return ;
         }
         zk_event->deleted_event(zk_event, zh, path);
     }
@@ -467,7 +483,7 @@ static void watcher(zhandle_t *zh, int type, int state, const char *path, void *
             log_debug("get key %s",p->key);
             if(strcmp(path, p->key) == 0) {
                 log_debug("catch key %s",p->key);
-                handle_event(p->value, zk_helper->zhandle, path);
+                handle_event(p->value, zk_helper->zhandle, type, path);
                 break;
             }
         }
