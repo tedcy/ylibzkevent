@@ -96,23 +96,23 @@ int destory_zookeeper_helper(struct ZookeeperHelper *zk_helper)
     struct ZkHelperPair *p;
     while(!SLIST_EMPTY(&zk_helper->zoo_event_list)) {
         p = SLIST_FIRST(&zk_helper->zoo_event_list);
+        SLIST_REMOVE_HEAD(&zk_helper->zoo_event_list, next);
         free(p->key);
         p->key = NULL;
         free(p->value);
         p->value = NULL;
         free(p);
         p = NULL;
-        SLIST_REMOVE_HEAD(&zk_helper->zoo_event_list, next);
     }
     while(!SLIST_EMPTY(&zk_helper->zoo_path_list)) {
         p = SLIST_FIRST(&zk_helper->zoo_path_list);
+        SLIST_REMOVE_HEAD(&zk_helper->zoo_path_list, next);
         free(p->key);
         p->key = NULL;
         free(p->value);
         p->value = NULL;
         free(p);
         p = NULL;
-        SLIST_REMOVE_HEAD(&zk_helper->zoo_path_list, next);
     }
 
     zookeeper_close(zk_helper->zhandle);
