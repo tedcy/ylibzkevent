@@ -406,7 +406,7 @@ static void handle_event(struct ZkEvent *zk_event, zhandle_t* zh, int type, cons
             log_error("set watcher [ZOO_CHANGED_EVENT] for path %s error %s", path, zerror(ret));
         }
         if(zk_event->changed_event == NULL) {
-            log_error("path %s eventmask: %d, created_event func is null", path, eventmask);
+            log_error("path %s eventmask: %d, changed_event func is null", path, eventmask);
             return ;
         }
         zk_event->changed_event(zk_event, zh, path);
@@ -418,7 +418,7 @@ static void handle_event(struct ZkEvent *zk_event, zhandle_t* zh, int type, cons
             log_error("set watcher [ZOO_CHILD_EVENT] for path %s error %s", path, zerror(ret));
         }
         if(zk_event->child_event == NULL) {
-            log_error("path %s eventmask: %d, created_event func is null", path, eventmask);
+            log_error("path %s eventmask: %d, child_event func is null", path, eventmask);
             return ;
         }
         zk_event->child_event(zk_event, zh, path);
@@ -430,7 +430,7 @@ static void handle_event(struct ZkEvent *zk_event, zhandle_t* zh, int type, cons
             log_error("set watcher [ZOO_DELETED_EVENT] for path %s error %s", path, zerror(ret));
         }
         if(zk_event->deleted_event == NULL) {
-            log_error("path %s eventmask: %d, created_event func is null", path, eventmask);
+            log_error("path %s eventmask: %d, deleted_event func is null", path, eventmask);
             return ;
         }
         zk_event->deleted_event(zk_event, zh, path);
