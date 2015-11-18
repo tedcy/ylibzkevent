@@ -14,7 +14,7 @@ all:$(TARGET)
 
 $(TARGET):$(OBJS)
 	@echo "  LD    $@"
-	@$(CC) -o $@ $^ $(LINK_LIBS)
+	@$(CC) -o $@ $^ $(LINK_LIBS) -lpthread
 
 clean:
 	rm -f $(TARGET) $(OBJS)

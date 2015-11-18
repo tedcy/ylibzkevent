@@ -2,6 +2,7 @@
 #define ZOOKEEPER_HELPER_H
 
 #include <zookeeper/zookeeper.h>
+#include <pthread.h>
 #include "queue.h"
 
 #define ZOOKEEPER_HELPER_HOST_MAX_LEN 1024
@@ -40,10 +41,13 @@ struct ZkHelperPair
 enum E_MODE
 {
     E_CONNECTION_M,
-    E_REGISTER_M
+    E_REGISTER_M,
+    E_DESTORY_M
 };
-    
-SLIST_HEAD(ZkHelperPairList,ZkHelperPair);
+
+struct ZkHelperPairList {
+    struct ZkHelperPair *slh_first;
+};
 
 struct ZookeeperHelper
 {
@@ -55,6 +59,7 @@ struct ZookeeperHelper
     short local_port;
     struct ZkHelperPairList zoo_path_list;
     struct ZkHelperPairList zoo_event_list;
+	pthread_mutex_t lock;
     int mode;
     int reconnection_flag;
 };

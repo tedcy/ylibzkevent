@@ -14,7 +14,7 @@ all:$(TARGET)
 
 $(TARGET):$(OBJS)
 	@echo "  LD    $@"
-	@$(CC) -o $@ $^ $(LINK_LIBS) -fsanitize=thread -fPIE -pie -g -ltsan
+	@$(CC) -o $@ $^ $(LINK_LIBS) -fsanitize=thread -fPIE -pie -g -ltsan -lpthread
 
 clean:
 	rm -f $(TARGET) $(OBJS)

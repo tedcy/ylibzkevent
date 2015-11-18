@@ -85,6 +85,15 @@ struct ZookeeperHelper * create_zookeeper_helper()
 {
     struct ZookeeperHelper *zk_helper = malloc(sizeof(struct ZookeeperHelper));
     memset(zk_helper,0,sizeof(struct ZookeeperHelper));
+    pthread_mutexattr_t attr;
+    pthread_mutexattr_init(&attr);
+    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+	if (pthread_mutex_init(&zk_helper->lock, &attr) != 0)
+	{
+        zk_helper->zk_errno = errno;
+        log_error("pthread_mutex_init zoo_path_list error: %s",strerror(errno));
+        return NULL;
+	}
     return zk_helper; 
 }
 
@@ -92,7 +101,9 @@ int destory_zookeeper_helper(struct ZookeeperHelper *zk_helper)
 {
     if(zk_helper == NULL)
         return -1;
-    zk_helper->mode = E_CONNECTION_M;
+    
+	pthread_mutex_lock(&zk_helper->lock);
+    zk_helper->mode = E_DESTORY_M;
     struct ZkHelperPair *p;
     while(!SLIST_EMPTY(&zk_helper->zoo_event_list)) {
         p = SLIST_FIRST(&zk_helper->zoo_event_list);
@@ -114,7 +125,10 @@ int destory_zookeeper_helper(struct ZookeeperHelper *zk_helper)
         free(p);
         p = NULL;
     }
+	pthread_mutex_unlock(&zk_helper->lock);
 
+    if (pthread_mutex_destroy(&zk_helper->lock) != 0) 
+        log_error("pthread_mutex_destroy zoo_path_list error: %s",strerror(errno));
     zookeeper_close(zk_helper->zhandle);
     free(zk_helper);
     return 0;
@@ -161,14 +175,30 @@ int register_to_zookeeper(struct ZookeeperHelper *zk_helper, \
 
 int add_tmp_node(struct ZookeeperHelper *zk_helper, const char *path, const char *value)
 {
+    int ret;
+	pthread_mutex_lock(&zk_helper->lock);
+    if(zk_helper->mode == E_DESTORY_M) {
+	    pthread_mutex_unlock(&zk_helper->lock);
+        return -1;
+    }
     zk_helper->mode = E_REGISTER_M;
-    return recursive_create_node(zk_helper, path, value, ZOO_EPHEMERAL);
+    ret = recursive_create_node(zk_helper, path, value, ZOO_EPHEMERAL);
+	pthread_mutex_unlock(&zk_helper->lock);
+    return ret;
 }
 
 int add_persistent_node(struct ZookeeperHelper *zk_helper, const char *path, const char *value)
 {
+    int ret;
+	pthread_mutex_lock(&zk_helper->lock);
+    if(zk_helper->mode == E_DESTORY_M) {
+	    pthread_mutex_unlock(&zk_helper->lock);
+        return -1;
+    }
     zk_helper->mode = E_REGISTER_M;
-    return recursive_create_node(zk_helper, path, value, 0);
+    ret = recursive_create_node(zk_helper, path, value, 0);
+	pthread_mutex_unlock(&zk_helper->lock);
+    return ret;
 }
 
 static int recursive_create_node(struct ZookeeperHelper *zk_helper, \
@@ -287,6 +317,12 @@ static int create_node(struct ZookeeperHelper *zk_helper, \
 int add_zookeeper_event(struct ZookeeperHelper *zk_helper, \
         int event, const char *path, struct ZkEvent *handle)
 {
+	pthread_mutex_lock(&zk_helper->lock);
+    if(zk_helper->mode == E_DESTORY_M) {
+        log_error("add_zookeeper_event failed, ZookeeperHelper in E_DESTORY_M mode");
+	    pthread_mutex_unlock(&zk_helper->lock);
+        return -1;
+    }
     int ret = 0;
     handle->eventmask |= event;
 
@@ -308,6 +344,8 @@ int add_zookeeper_event(struct ZookeeperHelper *zk_helper, \
         mem_new_value(&p->value, NULL, handle, sizeof(struct ZkEvent));
         SLIST_INSERT_HEAD(&zk_helper->zoo_event_list, p, next);
     }
+	pthread_mutex_unlock(&zk_helper->lock);
+
     if((event & CREATED_EVENT) || (event & DELETED_EVENT) || (event & CHANGED_EVENT)){
         ret = zoo_exists(zk_helper->zhandle, path, 1, NULL);
         if(ret != ZOK){
@@ -461,6 +499,7 @@ static void watcher(zhandle_t *zh, int type, int state, const char *path, void *
             if(zk_helper->mode == E_REGISTER_M && zk_helper->reconnection_flag)
             {
                 //只有在SESSION EXPIRED事件导致的应用重连才创建临时节点
+	            pthread_mutex_lock(&zk_helper->lock);
                 struct ZkHelperPair *p;
                 SLIST_FOREACH(p, &zk_helper->zoo_path_list, next)
                 {
@@ -468,8 +507,11 @@ static void watcher(zhandle_t *zh, int type, int state, const char *path, void *
                     create_node(zk_helper, p->key, p->value, p->flag); 
                 }
                 zk_helper->reconnection_flag = 0;
+	            pthread_mutex_unlock(&zk_helper->lock);
             }
+	        pthread_mutex_lock(&zk_helper->lock);
             re_set_event(zk_helper);     //重新设置观察点
+	        pthread_mutex_unlock(&zk_helper->lock);
         }
         else if(state == ZOO_AUTH_FAILED_STATE)
         {
@@ -486,6 +528,7 @@ static void watcher(zhandle_t *zh, int type, int state, const char *path, void *
     }
     else 
     {
+	    pthread_mutex_lock(&zk_helper->lock);
         struct ZkHelperPair *p;
         SLIST_FOREACH(p, &zk_helper->zoo_event_list, next)
         {
@@ -493,10 +536,11 @@ static void watcher(zhandle_t *zh, int type, int state, const char *path, void *
             log_debug("get key %s",p->key);
             if(strcmp(path, p->key) == 0) {
                 log_debug("catch key %s",p->key);
-                handle_event(p->value, zk_helper->zhandle, type, path);
                 break;
             }
         }
+	    pthread_mutex_unlock(&zk_helper->lock);
+        handle_event(p->value, zk_helper->zhandle, type, path);
     }
 }
 
