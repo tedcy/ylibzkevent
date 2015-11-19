@@ -6,6 +6,7 @@
 #include "logger.h"
 
 struct ZookeeperHelper *zk_helper;
+int if_exit;
 
 void child_event(struct ZkEvent *zk_event, zhandle_t *zh, const char *path)
 {
@@ -26,26 +27,63 @@ void connected_event(struct ZkEvent *zk_event, zhandle_t *zh, const char *path)
     zk_event->child_event(zk_event, zh, path);
 }
 
+void child_event1(struct ZkEvent *zk_event, zhandle_t *zh, const char *path)
+{
+    log_info("catch childevent1");
+    struct String_vector node_vector;
+    get_children(zh, "/fuck/yuanyuanming/abc", &node_vector);
+    int i;
+    for(i = 0; i < node_vector.count; i++)
+    {
+        log_info("path %s child: %s", path, node_vector.data[i]);
+    }
+    deallocate_String_vector(&node_vector);
+}
+
+void connected_event1(struct ZkEvent *zk_event, zhandle_t *zh, const char *path)
+{
+    log_info("catch connectedevent1");
+    zk_event->child_event(zk_event, zh, path);
+}
+
 void exiter(int sig)
 {
-    destory_zookeeper_helper(zk_helper);
-    zk_helper = NULL;
-    exit(0);
+    log_info("exiter");
+    if_exit = 1;
 }
 
 int main()
 {
     signal(SIGINT, exiter);
-    log_init(&logger, NULL, LOG_LEVEL_DEBUG);
-    struct ZkEvent zk_event;
+    log_init(&logger, NULL, LOG_LEVEL_INFO);
+    struct ZkEvent zk_event,zk_event1,zk_event2,zk_event3;
     memset(&zk_event, 0, sizeof(struct ZkEvent));
+    memset(&zk_event1, 0, sizeof(struct ZkEvent));
+    memset(&zk_event2, 0, sizeof(struct ZkEvent));
+    memset(&zk_event3, 0, sizeof(struct ZkEvent));
     zk_event.child_event = child_event;
     zk_event.connected_event = connected_event;
 
+    zk_event1.child_event = child_event1;
+    zk_event1.connected_event = connected_event1;
+
+    zk_event2.child_event = child_event1;
+    zk_event2.connected_event = connected_event1;
+
+    zk_event3.child_event = child_event1;
+    zk_event3.connected_event = connected_event1;
     zk_helper = create_zookeeper_helper();
     register_to_zookeeper(zk_helper, "172.16.200.239:2181", 6000);
     add_tmp_node(zk_helper, "/fuck/yuanyuanming/abc", "fuckfuckfuck");
     add_zookeeper_event(zk_helper, CHILD_EVENT ,"/fuck/yuanyuanming", &zk_event);
-    sleep(10000);
+    add_zookeeper_event(zk_helper, CHANGED_EVENT ,"/fuck/yuanyuanming/abc", &zk_event1);
+    add_zookeeper_event(zk_helper, CHANGED_EVENT|CREATED_EVENT ,"/fuck/yuanyuanming/abd", &zk_event2);
+    add_zookeeper_event(zk_helper, CHANGED_EVENT ,"/fuck/yuanyuanming/abe", &zk_event3);
+    while(!if_exit) {
+        sleep(1);
+    }
+    destory_zookeeper_helper(zk_helper);
+    zk_helper = NULL;
+
     return 0;
 }
