@@ -20,7 +20,7 @@ static int get_local_addr();
 static void re_set_event(struct ZookeeperHelper *zk_helper);
 static void re_connect(struct ZookeeperHelper *zk_helper);
 static void handle_event(struct ZkEvent *zk_event, \
-        zhandle_t* zh, int type, const char* path);
+        struct ZookeeperHelper *zk_helper, int type, const char* path);
 
 const int CREATED_EVENT = 1 << 1;
 const int DELETED_EVENT = 1 << 2;
@@ -90,6 +90,7 @@ struct ZookeeperHelper * create_zookeeper_helper()
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+    pthread_rwlock_init(&zk_helper->rw_lock, NULL);
     if (pthread_mutex_init(&zk_helper->lock, &attr) != 0)
     {
         zk_helper->zk_errno = errno;
@@ -106,6 +107,7 @@ int destory_zookeeper_helper(struct ZookeeperHelper *zk_helper)
         return -1;
     
     pthread_mutex_lock(&zk_helper->lock);
+    pthread_rwlock_wrlock(&zk_helper->rw_lock);
     zk_helper->mode = E_DESTORY_M;
     struct ZkHelperPair *p;
     while(!SLIST_EMPTY(&zk_helper->zoo_event_list)) {
@@ -128,11 +130,15 @@ int destory_zookeeper_helper(struct ZookeeperHelper *zk_helper)
         free(p);
         p = NULL;
     }
+    pthread_rwlock_unlock(&zk_helper->rw_lock);
     pthread_mutex_unlock(&zk_helper->lock);
 
     if (pthread_mutex_destroy(&zk_helper->lock) != 0) 
         log_error("pthread_mutex_destroy zoo_path_list error: %s",strerror(errno));
-    zookeeper_close(zk_helper->zhandle);
+    if (pthread_rwlock_destroy(&zk_helper->rw_lock) != 0) 
+        log_error("pthread_rwlock_destroy error: %s",strerror(errno));
+    if(zk_helper->zhandle != NULL)
+        zookeeper_close(zk_helper->zhandle);
     free(zk_helper);
     return 0;
 }
@@ -159,7 +165,7 @@ int register_to_zookeeper(struct ZookeeperHelper *zk_helper, \
             break;
         }
         if(timeout >= zk_helper->recv_timeout){
-            zookeeper_close(zk_helper->zhandle);
+            //zookeeper_close(zk_helper->zhandle);
             log_error("connect zookeeper Timeout");
             zk_helper->zk_errno = ZOPERATIONTIMEOUT;
             return -1;
@@ -169,7 +175,7 @@ int register_to_zookeeper(struct ZookeeperHelper *zk_helper, \
     }
 
     if(-1 == get_local_addr(zk_helper)){
-        zookeeper_close(zk_helper->zhandle);
+        //zookeeper_close(zk_helper->zhandle);
         return -1;
     }
 
@@ -415,7 +421,7 @@ static void re_set_event(struct ZookeeperHelper *zk_helper)
                 }
             }
         }
-        zk_event->connected_event(zk_event, zk_helper->zhandle, path);
+        zk_event->connected_event(zk_event, zk_helper, path);
     }
 }
 
@@ -433,10 +439,11 @@ static void re_connect(struct ZookeeperHelper *zk_helper)
     zk_helper->reconnection_flag = 1; 
 }
 
-static void handle_event(struct ZkEvent *zk_event, zhandle_t* zh, int type, const char* path)
+static void handle_event(struct ZkEvent *zk_event, struct ZookeeperHelper *zk_helper, int type, const char* path)
 {
     int ret;
     int eventmask = zk_event->eventmask;
+    zhandle_t *zh = zk_helper->zhandle;
     log_debug("path %s eventmask: %d", path, eventmask);
     if(type == ZOO_CREATED_EVENT && eventmask & CREATED_EVENT)
     {
@@ -449,7 +456,7 @@ static void handle_event(struct ZkEvent *zk_event, zhandle_t* zh, int type, cons
             log_error("path %s eventmask: %d, created_event func is null", path, eventmask);
             return ;
         }
-        zk_event->created_event(zk_event, zh, path);
+        zk_event->created_event(zk_event, zk_helper, path);
     }
     else if(type == ZOO_CHANGED_EVENT && eventmask & CHANGED_EVENT)
     {
@@ -461,7 +468,7 @@ static void handle_event(struct ZkEvent *zk_event, zhandle_t* zh, int type, cons
             log_error("path %s eventmask: %d, changed_event func is null", path, eventmask);
             return ;
         }
-        zk_event->changed_event(zk_event, zh, path);
+        zk_event->changed_event(zk_event, zk_helper, path);
     }
     else if(type == ZOO_CHILD_EVENT && eventmask & CHILD_EVENT)
     {
@@ -473,7 +480,7 @@ static void handle_event(struct ZkEvent *zk_event, zhandle_t* zh, int type, cons
             log_error("path %s eventmask: %d, child_event func is null", path, eventmask);
             return ;
         }
-        zk_event->child_event(zk_event, zh, path);
+        zk_event->child_event(zk_event, zk_helper, path);
     }
     else if(type == ZOO_DELETED_EVENT && eventmask & DELETED_EVENT)
     {
@@ -485,7 +492,7 @@ static void handle_event(struct ZkEvent *zk_event, zhandle_t* zh, int type, cons
             log_error("path %s eventmask: %d, deleted_event func is null", path, eventmask);
             return ;
         }
-        zk_event->deleted_event(zk_event, zh, path);
+        zk_event->deleted_event(zk_event, zk_helper, path);
     }
 
 }
@@ -526,7 +533,9 @@ static void watcher(zhandle_t *zh, int type, int state, const char *path, void *
             //zookeeper_close(zk_helper->zhandle);
             //自动重连
             pthread_mutex_lock(&zk_helper->lock);
+            pthread_rwlock_wrlock(&zk_helper->rw_lock);
             re_connect(zk_helper);
+            pthread_rwlock_unlock(&zk_helper->rw_lock);
             pthread_mutex_unlock(&zk_helper->lock);
         }
     }
@@ -540,7 +549,7 @@ static void watcher(zhandle_t *zh, int type, int state, const char *path, void *
             log_debug("get key %s",p->key);
             if(strcmp(path, p->key) == 0) {
                 log_debug("catch key %s",p->key);
-                handle_event(p->value, zk_helper->zhandle, type, path);
+                handle_event(p->value, zk_helper, type, path);
                 break;
             }
         }
@@ -586,11 +595,19 @@ static int get_local_addr(struct ZookeeperHelper *zk_helper)
     return 0;
 }
 
-int get_children(zhandle_t *zh, \
+int get_children(struct ZookeeperHelper *zk_helper, \
         const char* path, struct String_vector *node_vector)
 {
+    if(zk_helper == NULL)
+        return -1;
     node_vector->count = 0;
-    int res = zoo_get_children(zh, path, 0, node_vector);
+    pthread_rwlock_rdlock(&zk_helper->rw_lock);
+    if(zk_helper->mode == E_DESTORY_M){
+        pthread_rwlock_unlock(&zk_helper->rw_lock);
+        return -1;
+    }
+    int res = zoo_get_children(zk_helper->zhandle, path, 0, node_vector);
+    pthread_rwlock_unlock(&zk_helper->rw_lock);
     if(res != ZOK)
     {
         log_error("Get %s error: %s(%d)", path, zerror(res), res);

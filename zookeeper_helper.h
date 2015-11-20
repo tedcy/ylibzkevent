@@ -8,8 +8,9 @@
 #define ZOOKEEPER_HELPER_HOST_MAX_LEN 1024
 
 struct ZkEvent;
+struct ZookeeperHelper;
 
-typedef void (*ZkEventFunc)(struct ZkEvent *zk_event, zhandle_t *zh, const char *path);
+typedef void (*ZkEventFunc)(struct ZkEvent *zk_event, struct ZookeeperHelper *zk_helper, const char *path);
 
 struct ZkEvent
 {
@@ -60,6 +61,7 @@ struct ZookeeperHelper
     struct ZkHelperPairList zoo_path_list;
     struct ZkHelperPairList zoo_event_list;
 	pthread_mutex_t lock;
+    pthread_rwlock_t rw_lock;
     int mode;
     int reconnection_flag;
 };
@@ -73,7 +75,7 @@ int add_tmp_node(struct ZookeeperHelper *zk_helper, const char *path, const char
 int add_persistent_node(struct ZookeeperHelper *zk_helper, const char *path, const char *value);
 int add_zookeeper_event(struct ZookeeperHelper *zk_helper, \
         int event, const char *path, struct ZkEvent *handle);
-int get_children(zhandle_t *zh, \
+int get_children(struct ZookeeperHelper *zk_helper, \
         const char* path, struct String_vector *node_vector);
 
 #endif
