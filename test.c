@@ -110,6 +110,7 @@ int main()
     add_zookeeper_event(zk_helper, CHANGED_EVENT ,"/fuck/yuanyuanming/abc", &zk_event1);
     add_zookeeper_event(zk_helper, CHANGED_EVENT|CREATED_EVENT ,"/fuck/yuanyuanming/abd", &zk_event2);
     add_zookeeper_event(zk_helper, CHANGED_EVENT ,"/fuck/yuanyuanming/abe", &zk_event3);
+    remove_zookeeper_event(zk_helper, "/fuck/yuanyuanming/abe");
     pthread_create(&test_id, NULL, tester, NULL);
     //child_event(NULL, zk_helper->zhandle, NULL);
     while(!if_exit) {

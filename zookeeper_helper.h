@@ -60,9 +60,15 @@ struct ZookeeperHelper
     short local_port;
     struct ZkHelperPairList zoo_path_list;
     struct ZkHelperPairList zoo_event_list;
-	pthread_mutex_t lock;
+	pthread_mutex_t lock;                   /* for zoo_path_list && zoo_event_list && mode */
+    /*rw_lock for zhandle and if_destory
+        1 zhandle : destory_zookeeper_helper will hold write lock
+            get_children and so on will check read lock
+        2 if_destory : destory_zookeeper_helper will hold write lock
+            when do all API, must check read lock for if_destory */
     pthread_rwlock_t rw_lock;
     int mode;
+    int if_destory;
     int reconnection_flag;
 };
 
@@ -75,6 +81,7 @@ int add_tmp_node(struct ZookeeperHelper *zk_helper, const char *path, const char
 int add_persistent_node(struct ZookeeperHelper *zk_helper, const char *path, const char *value);
 int add_zookeeper_event(struct ZookeeperHelper *zk_helper, \
         int event, const char *path, struct ZkEvent *handle);
+int remove_zookeeper_event(struct ZookeeperHelper *zk_helper, const char *path);
 int get_children(struct ZookeeperHelper *zk_helper, \
         const char* path, struct String_vector *node_vector);
 
