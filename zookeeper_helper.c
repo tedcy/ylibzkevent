@@ -109,6 +109,7 @@ int destory_zookeeper_helper(struct ZookeeperHelper *zk_helper)
     pthread_mutex_lock(&zk_helper->lock);
     pthread_rwlock_wrlock(&zk_helper->rw_lock);
     zk_helper->if_destory = E_DESTORY_M;
+    zk_helper->mode = E_DESTORY_M;
     struct ZkHelperPair *p;
     while(!SLIST_EMPTY(&zk_helper->zoo_event_list)) {
         p = SLIST_FIRST(&zk_helper->zoo_event_list);

@@ -62,7 +62,7 @@ struct ZookeeperHelper
     struct ZkHelperPairList zoo_event_list;
 	pthread_mutex_t lock;                   /* for zoo_path_list && zoo_event_list && mode */
     /*rw_lock for zhandle and if_destory
-        1 zhandle : destory_zookeeper_helper will hold write lock
+        1 zhandle : destory_zookeeper_helper and re_connect will hold write lock
             get_children and so on will check read lock
         2 if_destory : destory_zookeeper_helper will hold write lock
             when do all API, must check read lock for if_destory */
