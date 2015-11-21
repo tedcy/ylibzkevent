@@ -15,7 +15,7 @@ void child_event(struct ZkEvent *zk_event, struct ZookeeperHelper *zk_helper, co
 {
     log_info("catch childevent");
     struct String_vector node_vector;
-    get_children(zk_helper, "/fuck/yuanyuanming", &node_vector);
+    zoo_helper_get_children(zk_helper, "/fuck/yuanyuanming", &node_vector);
     int i;
     for(i = 0; i < node_vector.count; i++)
     {
@@ -34,7 +34,7 @@ void child_event1(struct ZkEvent *zk_event, struct ZookeeperHelper *zk_helper, c
 {
     log_info("catch childevent1");
     struct String_vector node_vector;
-    get_children(zk_helper, "/fuck/yuanyuanming", &node_vector);
+    zoo_helper_get_children(zk_helper, "/fuck/yuanyuanming", &node_vector);
     int i;
     for(i = 0; i < node_vector.count; i++)
     {
@@ -63,7 +63,7 @@ void exiter(int sig)
 void test_event(struct ZkEvent *zk_event, struct ZookeeperHelper *zk_helper, const char *path)
 {
     struct String_vector node_vector;
-    get_children(zk_helper, "/fuck/yuanyuanming", &node_vector);
+    zoo_helper_get_children(zk_helper, "/fuck/yuanyuanming", &node_vector);
     int i;
     for(i = 0; i < node_vector.count; i++) ;
     deallocate_String_vector(&node_vector);

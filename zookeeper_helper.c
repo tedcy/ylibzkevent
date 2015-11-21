@@ -92,7 +92,6 @@ struct ZookeeperHelper * create_zookeeper_helper()
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
     if (pthread_mutex_init(&zk_helper->lock, &attr) != 0)
     {
-        zk_helper->zk_errno = errno;
         log_error("pthread_mutex_init zoo_path_list error: %s",strerror(errno));
         return NULL;
     }
@@ -149,7 +148,6 @@ int register_to_zookeeper(struct ZookeeperHelper *zk_helper, \
             NULL, zk_helper, 0);
     if(zk_helper->zhandle == NULL){
         log_error("zookeeper_init error: %s", strerror(errno));
-        zk_helper->zk_errno = errno;
         return -1;
     }
 
@@ -162,7 +160,6 @@ int register_to_zookeeper(struct ZookeeperHelper *zk_helper, \
         if(timeout >= zk_helper->recv_timeout){
             //zookeeper_close(zk_helper->zhandle);
             log_error("connect zookeeper Timeout");
-            zk_helper->zk_errno = ZOPERATIONTIMEOUT;
             return -1;
         }
         zoo_sleep(1);
@@ -235,12 +232,10 @@ static int recursive_create_node(struct ZookeeperHelper *zk_helper, \
                 res = zoo_create(zk_helper->zhandle, strPath, " ", 1, \
                         &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0);
                 if(res != ZOK) {
-                    zk_helper->zk_errno = res;
                     log_error("create node %s error: %s(%d)", strPath, zerror(res), res);
                 }
             }
             else {
-                zk_helper->zk_errno = res;
                 log_error("check node %s error: %s(%d)", strPath, zerror(res), res);
             }
         }
@@ -258,7 +253,6 @@ static int create_node(struct ZookeeperHelper *zk_helper, \
         res = zoo_delete(zk_helper->zhandle, path, -1);
         if(res != ZOK)
         {
-            zk_helper->zk_errno = res;
             log_error("Delete path %s error: %s", path, zerror(res));
             return -1;
         }
@@ -274,14 +268,12 @@ static int create_node(struct ZookeeperHelper *zk_helper, \
     }
     else
     {
-        zk_helper->zk_errno = res;
         log_error("Check node exists error: %s(%d)", zerror(res), res);
         return -1;
     }
 
     if(res != ZOK)
     {
-        zk_helper->zk_errno = res;
         log_error("create node %s flag %d error: %s", path, flag, zerror(res));
         return -1;
     }
@@ -611,7 +603,7 @@ static int get_local_addr(struct ZookeeperHelper *zk_helper)
     return 0;
 }
 
-int get_children(struct ZookeeperHelper *zk_helper, \
+int zoo_helper_get_children(struct ZookeeperHelper *zk_helper, \
         const char* path, struct String_vector *node_vector)
 {
     if(zk_helper == NULL)
@@ -630,4 +622,93 @@ int get_children(struct ZookeeperHelper *zk_helper, \
         return -1;
     }
     return 0;
+}
+
+int zoo_helper_get(struct ZookeeperHelper *zk_helper, \
+        const char* path, char *buf, int *buf_len)
+{
+    pthread_mutex_lock(&zk_helper->lock);
+    if(zk_helper->mode == E_DESTORY_M){
+        pthread_mutex_unlock(&zk_helper->lock);
+        return -1;
+    }
+    int res = zoo_get(zk_helper->zhandle, path, 0, buf, buf_len, NULL);
+    pthread_mutex_unlock(&zk_helper->lock);
+    if(res != ZOK)
+    {
+        log_error("Get %s error: %s(%d)", path, zerror(res), res);
+        return -1;
+    }
+
+    log_info("Get %s value %s len = %d", path, buf, *buf_len);
+    return 0;
+}
+
+int zoo_helper_exists(struct ZookeeperHelper *zk_helper, \
+        const char *path)
+{
+    pthread_mutex_lock(&zk_helper->lock);
+    if(zk_helper->mode == E_DESTORY_M){
+        pthread_mutex_unlock(&zk_helper->lock);
+        return -1;
+    }
+    int res = zoo_exists(zk_helper->zhandle, path, 0, NULL);
+    pthread_mutex_unlock(&zk_helper->lock);
+    if(res == ZOK)
+        return 1;
+    else if(res == ZNONODE){
+        return 0;
+    }else{
+        log_error("zoo_exists path = %s error: %s(%d)", path, zerror(res), res);
+        return -1;
+    }
+}
+
+int zoo_helper_set(struct ZookeeperHelper *zk_helper, \
+        const char* path, const char* buffer, int buflen, int version)
+{
+    pthread_mutex_lock(&zk_helper->lock);
+    if(zk_helper->mode == E_DESTORY_M){
+        pthread_mutex_unlock(&zk_helper->lock);
+        return -1;
+    }
+    int res = zoo_set(zk_helper->zhandle, path, buffer, buflen, version);
+    pthread_mutex_unlock(&zk_helper->lock);
+    if(res == ZOK)
+        return 0;
+    log_error("zookeeper set path=%s error %s(%d)", path, zerror(res), res); 
+    return -1;
+}
+
+int zoo_helper_delete(struct ZookeeperHelper *zk_helper, \
+        const char* path, int version)
+{
+    pthread_mutex_lock(&zk_helper->lock);
+    if(zk_helper->mode == E_DESTORY_M){
+        pthread_mutex_unlock(&zk_helper->lock);
+        return -1;
+    }
+    int res = zoo_delete(zk_helper->zhandle, path, version);
+    pthread_mutex_unlock(&zk_helper->lock);
+    if(res == ZOK)
+        return 0;
+    log_error("zookeeper delete path=%s error %s(%d)", path, zerror(res), res);
+    return -1;
+}
+
+int zoo_helper_create(struct ZookeeperHelper *zk_helper, \
+        const char* path, const char* value, int value_len, int flags)
+{
+    pthread_mutex_lock(&zk_helper->lock);
+    if(zk_helper->mode == E_DESTORY_M){
+        pthread_mutex_unlock(&zk_helper->lock);
+        return -1;
+    }
+    char buf[256];
+    int res = zoo_create(zk_helper->zhandle, path, value, value_len, &ZOO_OPEN_ACL_UNSAFE, flags, buf, sizeof(buf));
+    pthread_mutex_unlock(&zk_helper->lock);
+    if(res == ZOK)
+        return 0;
+    log_error("zookeeper create path=%s error %s(%d)", path, zerror(res), res);
+    return -1;
 }

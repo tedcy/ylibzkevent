@@ -55,7 +55,6 @@ struct ZookeeperHelper
     char host[ZOOKEEPER_HELPER_HOST_MAX_LEN];
     int recv_timeout;
     zhandle_t *zhandle;
-    int zk_errno;
     char local_addr[32];
     short local_port;
     struct ZkHelperPairList zoo_path_list;
@@ -68,14 +67,29 @@ struct ZookeeperHelper
 struct ZookeeperHelper * create_zookeeper_helper();
 int destory_zookeeper_helper(struct ZookeeperHelper *zk_helper);
 
+/*register*/
 int register_to_zookeeper(struct ZookeeperHelper *zk_helper, \
         const char* host, int recv_timeout);
+/*node*/
 int add_tmp_node(struct ZookeeperHelper *zk_helper, const char *path, const char *value);
 int add_persistent_node(struct ZookeeperHelper *zk_helper, const char *path, const char *value);
+/*event*/
 int add_zookeeper_event(struct ZookeeperHelper *zk_helper, \
         int event, const char *path, struct ZkEvent *handle);
 int remove_zookeeper_event(struct ZookeeperHelper *zk_helper, const char *path);
-int get_children(struct ZookeeperHelper *zk_helper, \
+
+/*normal API*/
+int zoo_helper_get_children(struct ZookeeperHelper *zk_helper, \
         const char* path, struct String_vector *node_vector);
+int zoo_helper_get(struct ZookeeperHelper *zk_helper, \
+        const char* path, char *buf, int *buf_len);
+int zoo_helper_exists(struct ZookeeperHelper *zk_helper, \
+        const char *path);
+int zoo_helper_set(struct ZookeeperHelper *zk_helper, \
+        const char* path, const char* buffer, int buflen, int version);
+int zoo_helper_delete(struct ZookeeperHelper *zk_helper, \
+        const char* path, int version);
+int zoo_helper_create(struct ZookeeperHelper *zk_helper, \
+        const char* path, const char* value, int value_len, int flags);
 
 #endif
