@@ -90,7 +90,6 @@ struct ZookeeperHelper * create_zookeeper_helper()
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
-    pthread_rwlock_init(&zk_helper->rw_lock, NULL);
     if (pthread_mutex_init(&zk_helper->lock, &attr) != 0)
     {
         zk_helper->zk_errno = errno;
@@ -107,8 +106,6 @@ int destory_zookeeper_helper(struct ZookeeperHelper *zk_helper)
         return -1;
     
     pthread_mutex_lock(&zk_helper->lock);
-    pthread_rwlock_wrlock(&zk_helper->rw_lock);
-    zk_helper->if_destory = E_DESTORY_M;
     zk_helper->mode = E_DESTORY_M;
     struct ZkHelperPair *p;
     while(!SLIST_EMPTY(&zk_helper->zoo_event_list)) {
@@ -133,13 +130,10 @@ int destory_zookeeper_helper(struct ZookeeperHelper *zk_helper)
     }
     if(zk_helper->zhandle != NULL)
         zookeeper_close(zk_helper->zhandle);
-    pthread_rwlock_unlock(&zk_helper->rw_lock);
     pthread_mutex_unlock(&zk_helper->lock);
 
     if (pthread_mutex_destroy(&zk_helper->lock) != 0) 
         log_error("pthread_mutex_destroy zoo_path_list error: %s",strerror(errno));
-    if (pthread_rwlock_destroy(&zk_helper->rw_lock) != 0) 
-        log_error("pthread_rwlock_destroy error: %s",strerror(errno));
     free(zk_helper);
     return 0;
 }
@@ -187,7 +181,7 @@ int add_tmp_node(struct ZookeeperHelper *zk_helper, const char *path, const char
 {
     int ret;
     pthread_mutex_lock(&zk_helper->lock);
-    if(zk_helper->if_destory == E_DESTORY_M) {
+    if(zk_helper->mode == E_DESTORY_M) {
         pthread_mutex_unlock(&zk_helper->lock);
         return -1;
     }
@@ -201,7 +195,7 @@ int add_persistent_node(struct ZookeeperHelper *zk_helper, const char *path, con
 {
     int ret;
     pthread_mutex_lock(&zk_helper->lock);
-    if(zk_helper->if_destory == E_DESTORY_M) {
+    if(zk_helper->mode == E_DESTORY_M) {
         pthread_mutex_unlock(&zk_helper->lock);
         return -1;
     }
@@ -328,7 +322,7 @@ int add_zookeeper_event(struct ZookeeperHelper *zk_helper, \
         int event, const char *path, struct ZkEvent *handle)
 {
     pthread_mutex_lock(&zk_helper->lock);
-    if(zk_helper->if_destory == E_DESTORY_M) {
+    if(zk_helper->mode == E_DESTORY_M) {
         log_error("add_zookeeper_event failed, ZookeeperHelper in E_DESTORY_M mode");
         pthread_mutex_unlock(&zk_helper->lock);
         return -1;
@@ -389,7 +383,7 @@ int add_zookeeper_event(struct ZookeeperHelper *zk_helper, \
 int remove_zookeeper_event(struct ZookeeperHelper *zk_helper, const char *path)
 {
     pthread_mutex_lock(&zk_helper->lock);
-    if(zk_helper->if_destory == E_DESTORY_M) {
+    if(zk_helper->mode == E_DESTORY_M) {
         log_error("add_zookeeper_event failed, ZookeeperHelper in E_DESTORY_M mode");
         pthread_mutex_unlock(&zk_helper->lock);
         return -1;
@@ -557,9 +551,7 @@ static void watcher(zhandle_t *zh, int type, int state, const char *path, void *
             //zookeeper_close(zk_helper->zhandle);
             //自动重连
             pthread_mutex_lock(&zk_helper->lock);
-            pthread_rwlock_wrlock(&zk_helper->rw_lock);
             re_connect(zk_helper);
-            pthread_rwlock_unlock(&zk_helper->rw_lock);
             pthread_mutex_unlock(&zk_helper->lock);
         }
     }
@@ -625,13 +617,13 @@ int get_children(struct ZookeeperHelper *zk_helper, \
     if(zk_helper == NULL)
         return -1;
     node_vector->count = 0;
-    pthread_rwlock_rdlock(&zk_helper->rw_lock);
-    if(zk_helper->if_destory == E_DESTORY_M){
-        pthread_rwlock_unlock(&zk_helper->rw_lock);
+    pthread_mutex_lock(&zk_helper->lock);
+    if(zk_helper->mode == E_DESTORY_M){
+        pthread_mutex_unlock(&zk_helper->lock);
         return -1;
     }
     int res = zoo_get_children(zk_helper->zhandle, path, 0, node_vector);
-    pthread_rwlock_unlock(&zk_helper->rw_lock);
+    pthread_mutex_unlock(&zk_helper->lock);
     if(res != ZOK)
     {
         log_error("Get %s error: %s(%d)", path, zerror(res), res);
